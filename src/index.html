@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en" data-theme="night" data-text="m">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MedGURU</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  #splash{position:fixed;inset:0;z-index:999;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:18px;background:#0B1E22;color:#E9F4F1;transition:opacity .45s}
+  body.ready #splash{opacity:0;pointer-events:none}
+  #splash .s-logo{width:92px;height:92px;border-radius:24px;box-shadow:0 18px 60px #35e0c433}
+  #splash h1{font:700 34px/1 Georgia,'Noto Serif',serif;margin:0;letter-spacing:.5px}
+  #splash h1 b{color:#35E0C4}
+  #splash small{color:#9DB8B3;font:500 12px/1 system-ui,Roboto,sans-serif;letter-spacing:.14em;text-transform:uppercase}
+  #splash svg.pl{width:180px;height:34px}
+  #splash .pl path{stroke:#35E0C4;stroke-width:3;fill:none;stroke-linecap:round;
+    stroke-dasharray:340;stroke-dashoffset:340;animation:sp 1.6s ease-in-out infinite}
+  @keyframes sp{0%{stroke-dashoffset:340}55%{stroke-dashoffset:0}100%{stroke-dashoffset:-340}}
+</style>
+</head>
+<body>
+<div id="splash">
+  <svg class="s-logo" viewBox="0 0 1024 1024"><defs><linearGradient id="sbg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0F3D3E"/><stop offset=".55" stop-color="#12747A"/><stop offset="1" stop-color="#2E5FCC"/></linearGradient></defs><rect width="1024" height="1024" rx="228" fill="url(#sbg)"/><path d="M120 560 H300 L360 560 400 430 470 700 540 300 610 620 650 560 H760" fill="none" stroke="#7CF5D8" stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/><circle cx="836" cy="560" r="40" fill="#FFB224"/></svg>
+  <h1>Med<b>GURU</b></h1>
+  <svg class="pl" viewBox="0 0 180 34"><path d="M2 17 H50 L60 17 66 6 76 28 86 2 96 24 102 17 H178"/></svg>
+  <small>by Dr Sarwar Alam</small>
+</div>
+<div id="app"></div>
+<script nonce="" type="module" src="app.js"></script>
+</body>
+</html>
