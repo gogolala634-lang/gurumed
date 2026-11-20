@@ -1,0 +1,82 @@
+name: Build MedGURU APK
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    env:
+      NDK_VERSION: 27.0.12077973
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - uses: android-actions/setup-android@v3
+      - name: Android SDK + NDK
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;${{ env.NDK_VERSION }}"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> $GITHUB_ENV
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: aarch64-linux-android }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: src-tauri }
+      - run: npm install --no-audit --no-fund
+      - name: App icon
+        run: |
+          sudo apt-get update && sudo apt-get install -y librsvg2-bin
+          rsvg-convert -w 1024 -h 1024 assets/icon.svg -o assets/icon.png
+      - run: npx tauri icon assets/icon.png
+      - run: npx tauri android init
+      - name: Offline hardening + haptics
+        run: |
+          M=src-tauri/gen/android/app/src/main/AndroidManifest.xml
+          sed -i '/android.permission.INTERNET/d' "$M"
+          grep -q VIBRATE "$M" || sed -i 's|<application|<uses-permission android:name="android.permission.VIBRATE"/>\n    <application|' "$M"
+          grep -q usesCleartextTraffic "$M" || sed -i 's|<application|<application android:usesCleartextTraffic="true"|' "$M"
+      - name: Signing
+        id: sign
+        env:
+          KS: ${{ secrets.KEYSTORE_BASE64 }}
+          SP: ${{ secrets.STORE_PASSWORD }}
+          KP: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          cd src-tauri/gen/android
+          SP=${SP:-medguru}; KP=${KP:-medguru}
+          if [ -n "$KS" ]; then
+            echo "$KS" | base64 -d > medguru.keystore
+            echo "generated=false" >> "$GITHUB_OUTPUT"
+          else
+            keytool -genkeypair -v -keystore medguru.keystore -alias medguru \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$SP" -keypass "$KP" \
+              -dname "CN=Dr Sarwar Alam, O=MedGURU, C=PK"
+            echo "generated=true" >> "$GITHUB_OUTPUT"
+          fi
+          printf 'storePassword=%s\nkeyPassword=%s\nalias=medguru\nstoreFile=%s/medguru.keystore\n' \
+            "$SP" "$KP" "$PWD" > keystore.properties
+      - run: npx tauri android build --apk --target aarch64
+      - name: Collect APK
+        run: |
+          mkdir -p dist
+          APK=$(find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' | grep -i release | head -n1)
+          V=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          cp "$APK" "dist/MedGURU-$V-arm64.apk"
+      - uses: actions/upload-artifact@v4
+        with: { name: MedGURU-APK, path: dist/*.apk }
+      - uses: actions/upload-artifact@v4
+        if: steps.sign.outputs.generated == 'true'
+        with: { name: medguru-signing-key, path: src-tauri/gen/android/medguru.keystore }
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/v')
+        with: { files: dist/*.apk }
