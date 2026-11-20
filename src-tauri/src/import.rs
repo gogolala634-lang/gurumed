@@ -42,7 +42,7 @@ fn sniff(db: &Path) -> String {
     "flashcard".into()
 }
 
-// --- FIXED FUNCTION HERE ---
+// --- THE FIX: Force ownership of the path string to prevent drops ---
 pub fn describe(dir: &Path) -> Result<Resource, String> {
     let folder = dir.file_name().unwrap().to_string_lossy().to_string();
     let man: serde_json::Value = fs::read(dir.join("manifest.json")).ok()
@@ -66,12 +66,12 @@ pub fn describe(dir: &Path) -> Result<Resource, String> {
     let icon = dir.join("icon.png");
     let c = rusqlite::Connection::open(&db).map_err(e)?;
     
-    // FIXED: Save to variable to prevent temporary value drop
     if let Some(app_data) = dir.parent().and_then(|r| r.parent()) {
         let pp = app_data.join("progress.sqlite");
         if pp.is_file() {
             if let Some(pp_str) = pp.to_str() {
-                let _ = c.execute("ATTACH DATABASE ? AS progress", [pp_str]);
+                let path_owned = pp_str.to_string(); // Force ownership
+                let _ = c.execute("ATTACH DATABASE ? AS progress", rusqlite::params![path_owned]);
             }
         }
     }
@@ -91,7 +91,6 @@ pub fn describe(dir: &Path) -> Result<Resource, String> {
         total, done,
     })
 }
-// ---------------------------
 
 #[tauri::command]
 pub fn app_data_dir(app: AppHandle) -> Result<String, String> {
@@ -187,4 +186,4 @@ fn dir_size(p: &Path) -> u64 {
 pub fn storage_usage(app: AppHandle) -> Result<u64, String> {
     let base = app.path().app_data_dir().map_err(e)?;
     Ok(dir_size(&base))
-        }
+}
