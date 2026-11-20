@@ -132,7 +132,26 @@ jobs:
           printf 'storePassword=medguru\nkeyPassword=medguru\nalias=medguru\nstoreFile=%s/medguru.keystore\n' "$PWD" > keystore.properties
 
       - name: Build APK
-        run: npx tauri android build --apk --target aarch64
+        run: |
+          set -o pipefail
+          npx tauri android build --apk --target aarch64 2>&1 | tee /tmp/build.log
+
+      - name: Show exact errors (only if build failed)
+        if: failure()
+        run: |
+          if [ -f /tmp/build.log ]; then
+            {
+              echo "## Build failed — exact errors"
+              echo '```'
+              grep -E "error\[|^error|error:|What went wrong|Caused by|FAILURE" /tmp/build.log | head -30
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            grep -E "error\[|^error|error:|What went wrong|Caused by" /tmp/build.log | head -12 | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+            echo "---- last 80 lines ----"
+            tail -80 /tmp/build.log
+          fi
 
       - name: Collect + sign APK
         run: |
