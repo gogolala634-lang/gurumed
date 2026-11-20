@@ -3,80 +3,164 @@ name: Build MedGURU APK
 on:
   push:
     branches: [main]
-    tags: ['v*']
   workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: build-apk
+  cancel-in-progress: true
+
 jobs:
   android:
     runs-on: ubuntu-latest
-    env:
-      NDK_VERSION: 27.0.12077973
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check project files
+        run: |
+          miss=0
+          for f in package.json src/index.html src/styles.css src/app.js src/demo-backend.js src/seed.json assets/icon.svg src-tauri/Cargo.toml src-tauri/build.rs src-tauri/tauri.conf.json src-tauri/capabilities/default.json src-tauri/src/main.rs src-tauri/src/lib.rs src-tauri/src/import.rs src-tauri/src/bank.rs src-tauri/src/seed.rs; do
+            if [ -f "$f" ]; then echo "OK      $f"; else echo "MISSING $f"; miss=1; fi
+          done
+          if [ "$miss" = 1 ]; then echo "::error::Project files missing (see MISSING lines above)."; exit 1; fi
+
       - uses: actions/setup-node@v4
-        with: { node-version: 20 }
-      - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: 17 }
-      - uses: android-actions/setup-android@v3
-      - name: Android SDK + NDK
-        run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;${{ env.NDK_VERSION }}"
-          echo "NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> $GITHUB_ENV
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> $GITHUB_ENV
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
       - uses: dtolnay/rust-toolchain@stable
-        with: { targets: aarch64-linux-android }
+        with:
+          targets: aarch64-linux-android
       - uses: Swatinem/rust-cache@v2
-        with: { workspaces: src-tauri }
-      - run: npm install --no-audit --no-fund
-      - name: App icon
+        with:
+          workspaces: src-tauri
+
+      - name: Locate Android SDK (preinstalled on runner)
         run: |
-          sudo apt-get update && sudo apt-get install -y librsvg2-bin
-          rsvg-convert -w 1024 -h 1024 assets/icon.svg -o assets/icon.png
+          SDK=""
+          for d in "$ANDROID_HOME" "$ANDROID_SDK_ROOT" /usr/local/lib/android/sdk /opt/android-sdk "$HOME/Android/Sdk"; do
+            if [ -n "$d" ] && [ -d "$d" ]; then SDK="$d"; break; fi
+          done
+          if [ -z "$SDK" ]; then
+            SDK="$HOME/android-sdk"; mkdir -p "$SDK/cmdline-tools"
+            curl -fsSL -o /tmp/ct.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+            unzip -q /tmp/ct.zip -d "$SDK/cmdline-tools"
+            mv "$SDK/cmdline-tools/cmdline-tools" "$SDK/cmdline-tools/latest"
+          fi
+          SM=$(ls "$SDK"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -n1)
+          [ -z "$SM" ] && SM=$(command -v sdkmanager || true)
+          if [ -z "$SM" ]; then echo "::error::sdkmanager not found in $SDK"; ls -R "$SDK" | head -50; exit 1; fi
+          echo "ANDROID_HOME=$SDK" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$SDK" >> $GITHUB_ENV
+          echo "SDKMANAGER=$SM" >> $GITHUB_ENV
+          echo "SDK=$SDK"; echo "sdkmanager=$SM"
+
+      - name: Install SDK packages + NDK
+        run: |
+          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null
+          NDK=$(ls -d "$ANDROID_HOME"/ndk/* 2>/dev/null | sort -V | tail -n1)
+          if [ -z "$NDK" ]; then
+            "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "ndk;27.2.12479018" > /dev/null
+            NDK=$(ls -d "$ANDROID_HOME"/ndk/* | sort -V | tail -n1)
+          fi
+          echo "NDK_HOME=$NDK" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$NDK" >> $GITHUB_ENV
+          echo "NDK=$NDK"
+
+      - name: Make app icon (plain Node, no extra tools)
+        run: |
+          cat > /tmp/mkicon.mjs <<'EOF'
+          import zlib from 'node:zlib'; import fs from 'node:fs';
+          const W=1024,H=1024,R=228,px=Buffer.alloc(W*H*4);
+          const hex=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+          const C1=hex('#0F3D3E'),C2=hex('#12747A'),C3=hex('#2E5FCC'),TL=hex('#7CF5D8'),AM=hex('#FFB224');
+          const P=[[120,560],[300,560],[360,560],[400,430],[470,700],[540,300],[610,620],[650,560],[760,560]];
+          const L=(a,b,t)=>a+(b-a)*t, C=v=>v<0?0:v>1?1:v;
+          const sd=(x,y,ax,ay,bx,by)=>{const dx=bx-ax,dy=by-ay,l=dx*dx+dy*dy;let t=l?((x-ax)*dx+(y-ay)*dy)/l:0;t=C(t);return Math.hypot(x-(ax+t*dx),y-(ay+t*dy));};
+          for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+            const i=(y*W+x)*4, cx=Math.max(R-x,x-(W-R),0), cy=Math.max(R-y,y-(H-R),0);
+            let a=1; if(cx>0&&cy>0)a=C(R-Math.hypot(cx,cy)+0.5);
+            if(a<=0){px[i+3]=0;continue;}
+            const t=(x+y)/(W+H); let r,g,b;
+            if(t<0.55){const u=t/0.55;r=L(C1[0],C2[0],u);g=L(C1[1],C2[1],u);b=L(C1[2],C2[2],u);}
+            else{const u=(t-0.55)/0.45;r=L(C2[0],C3[0],u);g=L(C2[1],C3[1],u);b=L(C2[2],C3[2],u);}
+            let d=1e9; for(let k=0;k<P.length-1;k++)d=Math.min(d,sd(x,y,P[k][0],P[k][1],P[k+1][0],P[k+1][1]));
+            const s=C(26-d+0.5); r=L(r,TL[0],s);g=L(g,TL[1],s);b=L(b,TL[2],s);
+            const q=C(40-Math.hypot(x-836,y-560)+0.5); r=L(r,AM[0],q);g=L(g,AM[1],q);b=L(b,AM[2],q);
+            px[i]=Math.round(r);px[i+1]=Math.round(g);px[i+2]=Math.round(b);px[i+3]=Math.round(a*255);
+          }
+          const raw=Buffer.alloc((W*4+1)*H);
+          for(let y=0;y<H;y++){raw[y*(W*4+1)]=0;px.copy(raw,y*(W*4+1)+1,y*W*4,(y+1)*W*4);}
+          const T=[...Array(256)].map((_,n)=>{let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;return c>>>0;});
+          const crc=b=>{let c=0xFFFFFFFF;for(const v of b)c=T[(c^v)&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0;};
+          const ck=(t,d)=>{const l=Buffer.alloc(4);l.writeUInt32BE(d.length);const td=Buffer.concat([Buffer.from(t,'ascii'),d]);const cr=Buffer.alloc(4);cr.writeUInt32BE(crc(td));return Buffer.concat([l,td,cr]);};
+          const ih=Buffer.alloc(13);ih.writeUInt32BE(W,0);ih.writeUInt32BE(H,4);ih[8]=8;ih[9]=6;
+          fs.mkdirSync('assets',{recursive:true});
+          fs.writeFileSync('assets/icon.png',Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),ck('IHDR',ih),ck('IDAT',zlib.deflateSync(raw,{level:9})),ck('IEND',Buffer.alloc(0))]));
+          console.log('icon.png written');
+          EOF
+          node /tmp/mkicon.mjs
+
+      - name: Install Tauri CLI
+        run: npm install --no-audit --no-fund --save-dev "@tauri-apps/cli@^2"
+
       - run: npx tauri icon assets/icon.png
       - run: npx tauri android init
-      - name: Offline hardening + haptics
+
+      - name: Offline hardening
         run: |
           M=src-tauri/gen/android/app/src/main/AndroidManifest.xml
+          if [ ! -f "$M" ]; then echo "::error::manifest missing"; find src-tauri/gen -name AndroidManifest.xml; exit 1; fi
           sed -i '/android.permission.INTERNET/d' "$M"
           grep -q VIBRATE "$M" || sed -i 's|<application|<uses-permission android:name="android.permission.VIBRATE"/>\n    <application|' "$M"
-          grep -q usesCleartextTraffic "$M" || sed -i 's|<application|<application android:usesCleartextTraffic="true"|' "$M"
-      - name: Signing
-        id: sign
+          cat "$M"
+
+      - name: Signing key
         env:
           KS: ${{ secrets.KEYSTORE_BASE64 }}
-          SP: ${{ secrets.STORE_PASSWORD }}
-          KP: ${{ secrets.KEY_PASSWORD }}
         run: |
           cd src-tauri/gen/android
-          SP=${SP:-medguru}; KP=${KP:-medguru}
-          if [ -n "$KS" ]; then
-            echo "$KS" | base64 -d > medguru.keystore
-            echo "generated=false" >> "$GITHUB_OUTPUT"
-          else
-            keytool -genkeypair -v -keystore medguru.keystore -alias medguru \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -storepass "$SP" -keypass "$KP" \
-              -dname "CN=Dr Sarwar Alam, O=MedGURU, C=PK"
-            echo "generated=true" >> "$GITHUB_OUTPUT"
-          fi
-          printf 'storePassword=%s\nkeyPassword=%s\nalias=medguru\nstoreFile=%s/medguru.keystore\n' \
-            "$SP" "$KP" "$PWD" > keystore.properties
-      - run: npx tauri android build --apk --target aarch64
-      - name: Collect APK
+          if [ -n "$KS" ]; then echo "$KS" | base64 -d > medguru.keystore
+          else keytool -genkeypair -keystore medguru.keystore -alias medguru -keyalg RSA -keysize 2048 -validity 10000 -storepass medguru -keypass medguru -dname "CN=Dr Sarwar Alam, O=MedGURU, C=PK"; fi
+          printf 'storePassword=medguru\nkeyPassword=medguru\nalias=medguru\nstoreFile=%s/medguru.keystore\n' "$PWD" > keystore.properties
+
+      - name: Build APK
+        run: npx tauri android build --apk --target aarch64
+
+      - name: Collect + sign APK
         run: |
           mkdir -p dist
-          APK=$(find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' | grep -i release | head -n1)
-          V=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          cp "$APK" "dist/MedGURU-$V-arm64.apk"
+          APK=$(find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' | head -n1)
+          echo "built: $APK"
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n1)
+          if "$BT/apksigner" verify "$APK" > /dev/null 2>&1; then
+            cp "$APK" dist/MedGURU-1.0.0-arm64.apk
+          else
+            "$BT/zipalign" -f -p 4 "$APK" /tmp/aligned.apk
+            "$BT/apksigner" sign --ks src-tauri/gen/android/medguru.keystore --ks-pass pass:medguru --key-pass pass:medguru --out dist/MedGURU-1.0.0-arm64.apk /tmp/aligned.apk
+          fi
+          ls -la dist
+
       - uses: actions/upload-artifact@v4
-        with: { name: MedGURU-APK, path: dist/*.apk }
+        with:
+          name: MedGURU-APK
+          path: dist/*.apk
       - uses: actions/upload-artifact@v4
-        if: steps.sign.outputs.generated == 'true'
-        with: { name: medguru-signing-key, path: src-tauri/gen/android/medguru.keystore }
-      - uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/v')
-        with: { files: dist/*.apk }
+        with:
+          name: medguru-signing-key
+          path: src-tauri/gen/android/medguru.keystore
+          if-no-files-found: ignore
+
+      - name: Diagnostics
+        if: always()
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"; echo "NDK_HOME=$NDK_HOME"
+          java -version 2>&1 | head -3; node -v
+          echo "--- files ---"; find . -path ./node_modules -prune -o -type f -print | head -60
