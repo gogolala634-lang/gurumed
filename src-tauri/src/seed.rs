@@ -1,7 +1,7 @@
-use crate::import::{data_root, now};
+use crate::import::now;
 use rusqlite::Connection;
 use std::{fs, path::Path};
-use tauri::AppHandle;
+use tauri::App;
 
 const SEED: &str = include_str!("../../src/seed.json");
 
@@ -13,9 +13,11 @@ fn write_manifest(dir: &Path, folder: &str, rtype: &str, adapter: &str, name: &s
     let _ = fs::write(dir.join("manifest.json"), serde_json::to_vec_pretty(&m).unwrap());
 }
 
-pub fn ensure(app: &AppHandle) {
-    let Ok(root) = data_root(app) else { return };
+pub fn ensure(app: &App) {
+    let Ok(root_base) = app.path().app_data_dir() else { return };
+    let root = root_base.join("local-databases");
     let _ = fs::create_dir_all(&root);
+    
     if let Ok(rd) = fs::read_dir(root.join(".trash")) {
         for x in rd.flatten() {
             let name = x.file_name().to_string_lossy().to_string();
@@ -26,6 +28,7 @@ pub fn ensure(app: &AppHandle) {
             }
         }
     }
+    
     let marker = root.join(".seeded");
     if marker.exists() { return; }
     let Ok(v) = serde_json::from_str::<serde_json::Value>(SEED) else { return };
@@ -36,12 +39,12 @@ pub fn ensure(app: &AppHandle) {
     let _ = fs::create_dir_all(&dir);
     if let Ok(c) = Connection::open(dir.join("sample.db")) {
         let _ = c.execute_batch("
-            CREATE TABLE Subjects(id INTEGER PRIMARY KEY, name TEXT, count INTEGER);
-            CREATE TABLE Systems(id INTEGER PRIMARY KEY, name TEXT, count INTEGER);
-            CREATE TABLE Questions(id INTEGER PRIMARY KEY, question TEXT, explanation TEXT, corrAns TEXT,
+            CREATE TABLE IF NOT EXISTS Subjects(id INTEGER PRIMARY KEY, name TEXT, count INTEGER);
+            CREATE TABLE IF NOT EXISTS Systems(id INTEGER PRIMARY KEY, name TEXT, count INTEGER);
+            CREATE TABLE IF NOT EXISTS Questions(id INTEGER PRIMARY KEY, question TEXT, explanation TEXT, corrAns TEXT,
                 subId TEXT, sysId TEXT, title TEXT, mediaName TEXT, otherMedias TEXT);
-            CREATE TABLE Answers(id INTEGER PRIMARY KEY, qId INTEGER, answerId INTEGER, answerText TEXT, correctPercentage INTEGER);
-            CREATE INDEX idx_answers_q ON Answers(qId);");
+            CREATE TABLE IF NOT EXISTS Answers(id INTEGER PRIMARY KEY, qId INTEGER, answerId INTEGER, answerText TEXT, correctPercentage INTEGER);
+        ");
         for x in qb["subjects"].as_array().unwrap_or(&vec![]) {
             let _ = c.execute("INSERT INTO Subjects(id,name) VALUES(?1,?2)", rusqlite::params![x["id"].as_i64(), s(x, "name")]);
         }
@@ -65,8 +68,9 @@ pub fn ensure(app: &AppHandle) {
     let _ = fs::create_dir_all(&dir);
     if let Ok(c) = Connection::open(dir.join("sample.bin")) {
         let _ = c.execute_batch("
-            CREATE TABLE Subjects(id INTEGER PRIMARY KEY, name TEXT, count INTEGER);
-            CREATE TABLE Questions(id INTEGER PRIMARY KEY, subId INTEGER, title TEXT, question TEXT, explanation TEXT, mediaName TEXT, otherMedias TEXT);");
+            CREATE TABLE IF NOT EXISTS Subjects(id INTEGER PRIMARY KEY, name TEXT, count INTEGER);
+            CREATE TABLE IF NOT EXISTS Questions(id INTEGER PRIMARY KEY, subId INTEGER, title TEXT, question TEXT, explanation TEXT, mediaName TEXT, otherMedias TEXT);
+        ");
         for d in fc["decks"].as_array().unwrap_or(&vec![]) {
             let cards = d["cards"].as_array().unwrap_or(&vec![]);
             let _ = c.execute("INSERT INTO Subjects VALUES(?1,?2,?3)", rusqlite::params![d["id"].as_i64(), s(d, "name"), cards.len() as i64]);
@@ -83,8 +87,9 @@ pub fn ensure(app: &AppHandle) {
     let _ = fs::create_dir_all(&dir);
     if let Ok(c) = Connection::open(dir.join("sample.db")) {
         let _ = c.execute_batch("
-            CREATE TABLE Docs(id INTEGER PRIMARY KEY, title TEXT, doc TEXT, path TEXT);
-            CREATE TABLE TOC(id INTEGER PRIMARY KEY, name TEXT, docId INTEGER, parentId INTEGER, leaf INTEGER, section TEXT);");
+            CREATE TABLE IF NOT EXISTS Docs(id INTEGER PRIMARY KEY, title TEXT, doc TEXT, path TEXT);
+            CREATE TABLE IF NOT EXISTS TOC(id INTEGER PRIMARY KEY, name TEXT, docId INTEGER, parentId INTEGER, leaf INTEGER, section TEXT);
+        ");
         for d in lb["docs"].as_array().unwrap_or(&vec![]) {
             let _ = c.execute("INSERT INTO Docs(id,title,doc) VALUES(?1,?2,?3)", rusqlite::params![d["id"].as_i64(), s(d, "title"), s(d, "html")]);
         }
@@ -95,4 +100,4 @@ pub fn ensure(app: &AppHandle) {
         write_manifest(&dir, &s(lb, "folder"), "library", "article", &s(lb, "name"), &s(lb, "description"), "sample.db");
     }
     let _ = fs::write(&marker, b"1");
-}
+        }
