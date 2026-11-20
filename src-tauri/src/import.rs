@@ -11,12 +11,14 @@ pub struct Resource {
 
 pub fn e<E: std::fmt::Display>(x: E) -> String { x.to_string() }
 pub fn now() -> i64 { SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64 }
+
 pub fn data_root(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app.path().app_data_dir().map_err(e)?.join("local-databases"))
 }
 
 pub fn progress_path(app: &AppHandle) -> Result<String, String> {
-    Ok(app.path().app_data_dir().map_err(e)?.join("progress.sqlite").to_string_lossy().into())
+    let p = app.path().app_data_dir().map_err(e)?.join("progress.sqlite");
+    Ok(p.to_string_lossy().to_string())
 }
 
 fn pick_db(dir: &Path, man: &serde_json::Value) -> Result<PathBuf, String> {
@@ -47,7 +49,6 @@ fn sniff(db: &Path) -> String {
     "flashcard".into()
 }
 
-// --- THE FIX: No more ATTACH DATABASE. We query progress separately. ---
 pub fn describe(dir: &Path, app: &AppHandle) -> Result<Resource, String> {
     let folder = dir.file_name().unwrap().to_string_lossy().to_string();
     let man: serde_json::Value = fs::read(dir.join("manifest.json")).ok()
@@ -76,8 +77,9 @@ pub fn describe(dir: &Path, app: &AppHandle) -> Result<Resource, String> {
         _ => c.query_row("SELECT COUNT(*) FROM Questions", [], |r| r.get(0)).unwrap_or(0),
     };
     
-    let done = if let Ok(p) = app.path().app_data_dir().map(|p| p.join("progress.sqlite")) {
-        if p.exists() {
+    let done = {
+        let p = progress_path(app)?;
+        if std::path::Path::new(&p).exists() {
             if let Ok(pc) = Connection::open(&p) {
                 let sql = match rtype.as_str() {
                     "qbank" => "SELECT COUNT(*) FROM answers WHERE folder=?1",
@@ -87,7 +89,7 @@ pub fn describe(dir: &Path, app: &AppHandle) -> Result<Resource, String> {
                 pc.query_row(sql, rusqlite::params![folder], |r| r.get(0)).unwrap_or(0)
             } else { 0 }
         } else { 0 }
-    } else { 0 };
+    };
 
     Ok(Resource {
         folder, rtype,
