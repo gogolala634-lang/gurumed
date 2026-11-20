@@ -1,4 +1,4 @@
-use crate::import::{data_root, describe, e, now};
+use crate::import::{data_root, describe, e, now, progress_path};
 use rusqlite::Connection;
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
@@ -24,27 +24,18 @@ pub fn progress_path(app: &AppHandle) -> Result<String, String> {
 
 fn bank(app: &AppHandle, folder: &str) -> Result<Connection, String> {
     if folder.contains('/') || folder.contains("..") { return Err("bad folder".into()); }
-    let res = describe(&data_root(app)?.join(folder))?;
+    let res = describe(&data_root(app)?.join(folder), app)?;
     Connection::open(&res.db).map_err(e)
 }
 
-// --- THE FIX: Use rusqlite::params! to handle the borrowing safely ---
-fn attached(app: &AppHandle, folder: &str) -> Result<Connection, String> {
-    let c = bank(app, folder)?;
-    let progress = progress_path(app)?; 
-    c.execute("ATTACH DATABASE ? AS progress", rusqlite::params![progress]).map_err(e)?;
-    Ok(c)
-}
-
-pub fn done_count(c: &Connection, folder: &str, rtype: &str) -> Result<i64, String> {
-    let attached: bool = c.query_row(
-        "SELECT COUNT(*) FROM pragma_database_list WHERE name='progress'", [], |r| r.get::<_, i64>(0)
-    ).unwrap_or(0) > 0;
-    if !attached { return Ok(0); }
+pub fn done_count(folder: &str, rtype: &str, app: &AppHandle) -> Result<i64, String> {
+    let p = progress_path(app)?;
+    if !std::path::Path::new(&p).exists() { return Ok(0); }
+    let c = Connection::open(&p).map_err(e)?;
     let sql = match rtype {
-        "qbank" => "SELECT COUNT(*) FROM progress.answers WHERE folder=?1",
-        "flashcard" => "SELECT COUNT(*) FROM progress.card_known WHERE folder=?1 AND known=1",
-        _ => "SELECT COUNT(*) FROM progress.reads WHERE folder=?1",
+        "qbank" => "SELECT COUNT(*) FROM answers WHERE folder=?1",
+        "flashcard" => "SELECT COUNT(*) FROM card_known WHERE folder=?1 AND known=1",
+        _ => "SELECT COUNT(*) FROM reads WHERE folder=?1",
     };
     c.query_row(sql, rusqlite::params![folder], |r| r.get(0)).map_err(e)
 }
@@ -68,9 +59,9 @@ fn pool_where(subject: Option<i64>, system: Option<i64>, status: &str) -> (Strin
     if let Some(s) = system { w += &format!(" AND (','||REPLACE(q.sysId,' ','')||',') LIKE '%,{s},%'"); }
     let mut uses_folder = false;
     match status {
-        "unseen" => { w += " AND NOT EXISTS (SELECT 1 FROM progress.answers a WHERE a.folder=?1 AND a.qid=q.id)"; uses_folder = true; }
-        "incorrect" => { w += " AND EXISTS (SELECT 1 FROM progress.answers a WHERE a.folder=?1 AND a.qid=q.id AND a.correct=0)"; uses_folder = true; }
-        "marked" => { w += " AND EXISTS (SELECT 1 FROM progress.marks m WHERE m.folder=?1 AND m.qid=q.id)"; uses_folder = true; }
+        "unseen" => { w += " AND NOT EXISTS (SELECT 1 FROM answers a WHERE a.folder=?1 AND a.qid=q.id)"; uses_folder = true; }
+        "incorrect" => { w += " AND EXISTS (SELECT 1 FROM answers a WHERE a.folder=?1 AND a.qid=q.id AND a.correct=0)"; uses_folder = true; }
+        "marked" => { w += " AND EXISTS (SELECT 1 FROM marks m WHERE m.folder=?1 AND m.qid=q.id)"; uses_folder = true; }
         _ => {}
     }
     (w, uses_folder)
@@ -87,7 +78,11 @@ pub fn qbank_meta(app: AppHandle, folder: String) -> Result<Value, String> {
 
 #[tauri::command]
 pub fn pool_count(app: AppHandle, folder: String, subject: Option<i64>, system: Option<i64>, status: String) -> Result<i64, String> {
-    let c = attached(&app, &folder)?;
+    let c = bank(&app, &folder)?;
+    let p = progress_path(&app)?;
+    if std::path::Path::new(&p).exists() {
+        let _ = c.execute(&format!("ATTACH DATABASE '{}' AS progress", p.replace('\'', "''")), []);
+    }
     let (w, uf) = pool_where(subject, system, &status);
     let sql = format!("SELECT COUNT(*) FROM Questions q{w}");
     let n = if uf { c.query_row(&sql, rusqlite::params![folder], |r| r.get(0)) } else { c.query_row(&sql, [], |r| r.get(0)) };
@@ -97,7 +92,11 @@ pub fn pool_count(app: AppHandle, folder: String, subject: Option<i64>, system: 
 #[tauri::command]
 pub fn build_session(app: AppHandle, folder: String, subject: Option<i64>, system: Option<i64>,
                      count: i64, status: String, order: String) -> Result<Vec<i64>, String> {
-    let c = attached(&app, &folder)?;
+    let c = bank(&app, &folder)?;
+    let p = progress_path(&app)?;
+    if std::path::Path::new(&p).exists() {
+        let _ = c.execute(&format!("ATTACH DATABASE '{}' AS progress", p.replace('\'', "''")), []);
+    }
     let count = count.clamp(1, 200) as usize;
     let (w, uf) = pool_where(subject, system, &status);
     let ord = if order == "qid" { "q.id" } else { "RANDOM()" };
@@ -107,9 +106,9 @@ pub fn build_session(app: AppHandle, folder: String, subject: Option<i64>, syste
         .iter().map(|v| v.as_i64().unwrap()).collect();
     let mut out: Vec<i64> = pool.into_iter().take(count).collect();
     if has_col(&c, "Questions", "parentQId") {
-        let members = |p: i64| -> Vec<(i64, String)> {
+        let members = |p_id: i64| -> Vec<(i64, String)> {
             c.prepare("SELECT id, question FROM Questions WHERE parentQId=?").ok()
-                .and_then(|mut s| s.query_map(rusqlite::params![p], |r| Ok((r.get(0)?, r.get(1)?)))
+                .and_then(|mut s| s.query_map(rusqlite::params![p_id], |r| Ok((r.get(0)?, r.get(1)?)))
                     .map(|it| it.filter_map(|x| x.ok()).collect()).ok()).unwrap_or_default()
         };
         let parent_of = |id: i64| -> i64 {
@@ -119,15 +118,15 @@ pub fn build_session(app: AppHandle, folder: String, subject: Option<i64>, syste
         let mut done = std::collections::HashSet::new();
         for id in out {
             if done.contains(&id) { continue; }
-            let p = parent_of(id);
-            let mut ms = if p != 0 { members(p) } else { vec![] };
+            let p_id = parent_of(id);
+            let mut ms = if p_id != 0 { members(p_id) } else { vec![] };
             if ms.len() >= 2 {
                 ms.sort_by_key(|(_, h)| item_index(h));
                 for (mid, _) in ms { if done.insert(mid) { expanded.push(mid); } }
             } else if done.insert(id) { expanded.push(id); }
         }
         while expanded.len() > count {
-            match expanded.iter().rposition(|&id| { let p = parent_of(id); p == 0 || members(p).len() < 2 }) {
+            match expanded.iter().rposition(|&id| { let p_id = parent_of(id); p_id == 0 || members(p_id).len() < 2 }) {
                 Some(pos) => { expanded.remove(pos); }
                 None => break,
             }
@@ -139,24 +138,33 @@ pub fn build_session(app: AppHandle, folder: String, subject: Option<i64>, syste
 
 #[tauri::command]
 pub fn get_question(app: AppHandle, folder: String, id: i64) -> Result<Value, String> {
-    let c = attached(&app, &folder)?;
+    let c = bank(&app, &folder)?;
     let (question, explanation, corr, mn, om): (String, String, String, String, String) = c.query_row(
         "SELECT question, COALESCE(explanation,''), COALESCE(corrAns,''), COALESCE(mediaName,''), COALESCE(otherMedias,'')
          FROM Questions WHERE id=?", rusqlite::params![id],
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))).map_err(e)?;
+    
     let answers = qj(&c, "SELECT answerId, answerText, COALESCE(correctPercentage,0) FROM Answers WHERE qId=? ORDER BY answerId",
         rusqlite::params![id], |r| {
             let n: i64 = r.get(0)?;
             let letter = if n >= 1 && n <= 26 { char::from(b'A' + (n - 1) as u8).to_string() } else { n.to_string() };
             Ok(json!({"letter": letter, "text": r.get::<_, String>(1)?, "pct": r.get::<_, i64>(2)?})) });
+            
     let refs = qj(&c, "SELECT refTitle, COALESCE(refLink,'') FROM Refs WHERE qId=? ORDER BY id",
         rusqlite::params![id], |r| Ok(json!({"title": r.get::<_, String>(0)?, "link": r.get::<_, String>(1)?})));
-    let marked: bool = c.query_row("SELECT EXISTS(SELECT 1 FROM progress.marks WHERE folder=?1 AND qid=?2)",
+
+    let p = progress_path(&app)?;
+    let pc = Connection::open(&p).map_err(e)?;
+    
+    let marked: bool = pc.query_row("SELECT EXISTS(SELECT 1 FROM marks WHERE folder=?1 AND qid=?2)",
         rusqlite::params![folder, id], |r| r.get::<_, i64>(0)).unwrap_or(0) == 1;
-    let your: Option<Value> = c.query_row("SELECT chosen, correct FROM progress.answers WHERE folder=?1 AND qid=?2",
+        
+    let your: Option<Value> = pc.query_row("SELECT chosen, correct FROM answers WHERE folder=?1 AND qid=?2",
         rusqlite::params![folder, id], |r| Ok(json!({"chosen": r.get::<_, String>(0)?, "correct": r.get::<_, i64>(1)? == 1}))).ok();
+
     let media: Vec<String> = std::iter::once(mn).chain(om.split(',').map(String::from))
         .map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+        
     Ok(json!({"id": id, "question": question, "explanation": explanation, "corr_ans": corr,
               "media": media, "answers": answers, "refs": refs, "marked": marked, "your_answer": your}))
 }
@@ -181,7 +189,11 @@ pub fn toggle_mark(app: AppHandle, folder: String, qid: i64) -> Result<bool, Str
 
 #[tauri::command]
 pub fn flash_decks(app: AppHandle, folder: String) -> Result<Vec<Value>, String> {
-    let c = attached(&app, &folder)?;
+    let c = bank(&app, &folder)?;
+    let p = progress_path(&app)?;
+    if std::path::Path::new(&p).exists() {
+        let _ = c.execute(&format!("ATTACH DATABASE '{}' AS progress", p.replace('\'', "''")), []);
+    }
     Ok(qj(&c, "SELECT s.id, s.name, COALESCE(s.count,0),
         (SELECT COUNT(*) FROM progress.card_known k WHERE k.folder=?1 AND k.known=1
            AND k.card_id IN (SELECT id FROM Questions WHERE subId=s.id))
@@ -192,7 +204,11 @@ pub fn flash_decks(app: AppHandle, folder: String) -> Result<Vec<Value>, String>
 
 #[tauri::command]
 pub fn flash_cards(app: AppHandle, folder: String, deck: i64) -> Result<Vec<Value>, String> {
-    let c = attached(&app, &folder)?;
+    let c = bank(&app, &folder)?;
+    let p = progress_path(&app)?;
+    if std::path::Path::new(&p).exists() {
+        let _ = c.execute(&format!("ATTACH DATABASE '{}' AS progress", p.replace('\'', "''")), []);
+    }
     Ok(qj(&c, "SELECT q.id, COALESCE(q.title,''), q.question, COALESCE(q.explanation,''),
         COALESCE(q.mediaName,''), COALESCE(q.otherMedias,''),
         COALESCE((SELECT k.known FROM progress.card_known k WHERE k.folder=?1 AND k.card_id=q.id),0)
@@ -225,10 +241,12 @@ pub fn lib_toc(app: AppHandle, folder: String, parent: i64, cursor: i64) -> Resu
 
 #[tauri::command]
 pub fn lib_doc(app: AppHandle, folder: String, id: i64) -> Result<Value, String> {
-    let c = attached(&app, &folder)?;
+    let c = bank(&app, &folder)?;
     let doc = c.query_row("SELECT title, doc FROM Docs WHERE id=?", rusqlite::params![id],
         |r| Ok(json!({"title": r.get::<_, String>(0)?, "html": r.get::<_, String>(1)?}))).map_err(e)?;
-    let _ = c.execute("INSERT OR REPLACE INTO progress.reads VALUES(?1,?2,?3)", rusqlite::params![folder, id, now()]);
+    
+    let pc = Connection::open(progress_path(&app)?).map_err(e)?;
+    let _ = pc.execute("INSERT OR REPLACE INTO reads VALUES(?1,?2,?3)", rusqlite::params![folder, id, now()]);
     Ok(doc)
 }
 
