@@ -1,7 +1,7 @@
 use crate::import::now;
 use rusqlite::Connection;
 use std::{fs, path::Path};
-use tauri::App;
+use tauri::{App, Manager}; // <-- Added Manager here!
 
 const SEED: &str = include_str!("../../src/seed.json");
 
@@ -100,4 +100,4 @@ pub fn ensure(app: &App) {
         write_manifest(&dir, &s(lb, "folder"), "library", "article", &s(lb, "name"), &s(lb, "description"), "sample.db");
     }
     let _ = fs::write(&marker, b"1");
-        }
+}
