@@ -1,6 +1,7 @@
 use serde::Serialize;
 use std::{fs, path::{Path, PathBuf}, time::{SystemTime, UNIX_EPOCH}};
 use tauri::{AppHandle, Emitter, Manager};
+use rusqlite::Connection;
 
 #[derive(Serialize, Clone)]
 pub struct Resource {
@@ -12,6 +13,10 @@ pub fn e<E: std::fmt::Display>(x: E) -> String { x.to_string() }
 pub fn now() -> i64 { SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64 }
 pub fn data_root(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app.path().app_data_dir().map_err(e)?.join("local-databases"))
+}
+
+pub fn progress_path(app: &AppHandle) -> Result<String, String> {
+    Ok(app.path().app_data_dir().map_err(e)?.join("progress.sqlite").to_string_lossy().into())
 }
 
 fn pick_db(dir: &Path, man: &serde_json::Value) -> Result<PathBuf, String> {
@@ -30,7 +35,7 @@ fn pick_db(dir: &Path, man: &serde_json::Value) -> Result<PathBuf, String> {
 }
 
 fn sniff(db: &Path) -> String {
-    let Ok(c) = rusqlite::Connection::open(db) else { return "qbank".into() };
+    let Ok(c) = Connection::open(db) else { return "qbank".into() };
     let names: Vec<String> = c.prepare("SELECT name FROM sqlite_master WHERE type='table'")
         .and_then(|mut s| s.query_map([], |r| r.get::<_, String>(0))
             .map(|it| it.filter_map(|x| x.ok()).collect())).unwrap_or_default();
@@ -42,8 +47,8 @@ fn sniff(db: &Path) -> String {
     "flashcard".into()
 }
 
-// --- THE FIX: Force ownership of the path string to prevent drops ---
-pub fn describe(dir: &Path) -> Result<Resource, String> {
+// --- THE FIX: No more ATTACH DATABASE. We query progress separately. ---
+pub fn describe(dir: &Path, app: &AppHandle) -> Result<Resource, String> {
     let folder = dir.file_name().unwrap().to_string_lossy().to_string();
     let man: serde_json::Value = fs::read(dir.join("manifest.json")).ok()
         .and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
@@ -64,23 +69,26 @@ pub fn describe(dir: &Path) -> Result<Resource, String> {
                 n.starts_with("media") || n == "images"
             }));
     let icon = dir.join("icon.png");
-    let c = rusqlite::Connection::open(&db).map_err(e)?;
-    
-    if let Some(app_data) = dir.parent().and_then(|r| r.parent()) {
-        let pp = app_data.join("progress.sqlite");
-        if pp.is_file() {
-            if let Some(pp_str) = pp.to_str() {
-                let path_owned = pp_str.to_string(); // Force ownership
-                let _ = c.execute("ATTACH DATABASE ? AS progress", rusqlite::params![path_owned]);
-            }
-        }
-    }
+    let c = Connection::open(&db).map_err(e)?;
     
     let total = match rtype.as_str() {
         "library" => c.query_row("SELECT COUNT(*) FROM Docs", [], |r| r.get(0)).unwrap_or(0),
         _ => c.query_row("SELECT COUNT(*) FROM Questions", [], |r| r.get(0)).unwrap_or(0),
     };
-    let done = crate::bank::done_count(&c, &folder, &rtype).unwrap_or(0);
+    
+    let done = if let Ok(p) = app.path().app_data_dir().map(|p| p.join("progress.sqlite")) {
+        if p.exists() {
+            if let Ok(pc) = Connection::open(&p) {
+                let sql = match rtype.as_str() {
+                    "qbank" => "SELECT COUNT(*) FROM answers WHERE folder=?1",
+                    "flashcard" => "SELECT COUNT(*) FROM card_known WHERE folder=?1 AND known=1",
+                    _ => "SELECT COUNT(*) FROM reads WHERE folder=?1",
+                };
+                pc.query_row(sql, rusqlite::params![folder], |r| r.get(0)).unwrap_or(0)
+            } else { 0 }
+        } else { 0 }
+    } else { 0 };
+
     Ok(Resource {
         folder, rtype,
         name: man["displayName"].as_str().unwrap_or(dir.file_name().unwrap().to_string_lossy().as_ref()).to_string(),
@@ -129,7 +137,7 @@ pub async fn import_zip(app: AppHandle, zip_name: String) -> Result<Resource, St
     }
     let _ = fs::remove_file(&zip_path);
     let _ = app.emit("import-progress", serde_json::json!({"stage":"validate","pct":1.0}));
-    let res = describe(&dest)?;
+    let res = describe(&dest, &app)?;
     let _ = app.emit("import-progress", serde_json::json!({"stage":"done","pct":1.0}));
     Ok(res)
 }
@@ -140,7 +148,7 @@ pub fn list_resources(app: AppHandle) -> Result<Vec<Resource>, String> {
     let mut v: Vec<Resource> = fs::read_dir(&root).into_iter().flatten()
         .filter_map(|x| x.ok()).map(|x| x.path()).filter(|p| p.is_dir())
         .filter(|p| !p.file_name().unwrap().to_string_lossy().starts_with('.'))
-        .filter_map(|p| describe(&p).ok()).collect();
+        .filter_map(|p| describe(&p, &app).ok()).collect();
     v.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(v)
 }
