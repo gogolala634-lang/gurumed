@@ -1,0 +1,98 @@
+{
+  "qbank": {
+    "folder": "medguru-sample-qbank",
+    "name": "Clinical Basics · Sample Qbank",
+    "description": "Ten starter questions covering high-yield clinical basics. Delete anytime.",
+    "subjects": [{ "id": 1, "name": "Medicine" }, { "id": 2, "name": "Pharmacology" }, { "id": 3, "name": "Physiology" }],
+    "systems": [{ "id": 1, "name": "Cardiovascular" }, { "id": 2, "name": "Respiratory" }, { "id": 3, "name": "Neurology" }, { "id": 4, "name": "Renal & Metabolic" }],
+    "questions": [
+      { "id": 1, "title": "Anaphylaxis", "subId": "1,2", "sysId": "2", "corrAns": "B",
+        "question": "<p>A 24-year-old develops urticaria, stridor and hypotension minutes after a peanut exposure. What is the <strong>first-line</strong> treatment?</p>",
+        "explanation": "<p><strong>IM adrenaline (epinephrine)</strong> into the anterolateral thigh is first-line in anaphylaxis — adult dose 0.5 mg of 1:1000. Antihistamines and steroids are adjuncts and never replace adrenaline. Repeat every 5 minutes if needed.</p>",
+        "answers": [{ "a": 1, "text": "<p>IV hydrocortisone</p>", "pct": 9 }, { "a": 2, "text": "<p>IM adrenaline 0.5 mg (1:1000)</p>", "pct": 78 }, { "a": 3, "text": "<p>Oral cetirizine</p>", "pct": 6 }, { "a": 4, "text": "<p>Nebulised salbutamol alone</p>", "pct": 7 }] },
+      { "id": 2, "title": "Inferior MI", "subId": "1", "sysId": "1", "corrAns": "C",
+        "question": "<p>ST elevation in leads <strong>II, III and aVF</strong> indicates infarction of which territory, usually supplied by which artery?</p>",
+        "explanation": "<p>II, III and aVF look at the <strong>inferior</strong> wall, supplied by the <strong>right coronary artery</strong> in ~80% of people. Check for reciprocal depression in I/aVL and consider right ventricular involvement (V4R).</p>",
+        "answers": [{ "a": 1, "text": "<p>Anterior — LAD</p>", "pct": 12 }, { "a": 2, "text": "<p>Lateral — circumflex</p>", "pct": 10 }, { "a": 3, "text": "<p>Inferior — right coronary artery</p>", "pct": 71 }, { "a": 4, "text": "<p>Posterior — circumflex</p>", "pct": 7 }] },
+      { "id": 3, "title": "Normal potassium", "subId": "3", "sysId": "4", "corrAns": "A",
+        "question": "<p>Which is the normal adult <strong>serum potassium</strong> range?</p>",
+        "explanation": "<p>Normal serum K⁺ is <strong>3.5–5.0 mmol/L</strong>. Below 3.5 → hypokalaemia (flat T waves, U waves); above 5.0 → hyperkalaemia (peaked T waves, widening QRS).</p>",
+        "answers": [{ "a": 1, "text": "<p>3.5–5.0 mmol/L</p>", "pct": 84 }, { "a": 2, "text": "<p>2.5–3.5 mmol/L</p>", "pct": 5 }, { "a": 3, "text": "<p>5.5–6.5 mmol/L</p>", "pct": 4 }, { "a": 4, "text": "<p>1.5–2.5 mmol/L</p>", "pct": 7 }] },
+      { "id": 4, "title": "Cranial nerve II", "subId": "3", "sysId": "3", "corrAns": "B",
+        "question": "<p>Which cranial nerve carries <strong>vision</strong>?</p>",
+        "explanation": "<p>CN <strong>II (optic)</strong> is purely sensory for vision and the afferent limb of the pupillary light reflex. CN III, IV and VI move the eye; CN V is facial sensation.</p>",
+        "answers": [{ "a": 1, "text": "<p>CN I</p>", "pct": 4 }, { "a": 2, "text": "<p>CN II</p>", "pct": 88 }, { "a": 3, "text": "<p>CN III</p>", "pct": 5 }, { "a": 4, "text": "<p>CN V</p>", "pct": 3 }] },
+      { "id": 5, "title": "DKA first step", "subId": "1", "sysId": "4", "corrAns": "A",
+        "question": "<p>A patient presents with glucose 28 mmol/L, ketones 4 mmol/L and pH 7.15. What is the <strong>most appropriate initial</strong> step?</p>",
+        "explanation": "<p>In DKA, start with <strong>IV 0.9% saline</strong> — patients are profoundly volume-depleted. Fixed-rate insulin follows; add potassium to fluids once K⁺ &lt; 5.5 and urine output is established. Bicarbonate is not routine.</p>",
+        "answers": [{ "a": 1, "text": "<p>IV 0.9% sodium chloride</p>", "pct": 66 }, { "a": 2, "text": "<p>IV bicarbonate</p>", "pct": 8 }, { "a": 3, "text": "<p>Subcutaneous long-acting insulin</p>", "pct": 9 }, { "a": 4, "text": "<p>Oral rehydration</p>", "pct": 17 }] },
+      { "id": 6, "title": "CAP organism", "subId": "1", "sysId": "2", "corrAns": "C",
+        "question": "<p>What is the <strong>most common</strong> cause of community-acquired pneumonia?</p>",
+        "explanation": "<p><strong>Streptococcus pneumoniae</strong> remains the commonest CAP pathogen worldwide. Atypicals (Mycoplasma, Legionella) and viruses follow; consider severity scores (CURB-65) to guide site of care.</p>",
+        "answers": [{ "a": 1, "text": "<p>Staphylococcus aureus</p>", "pct": 9 }, { "a": 2, "text": "<p>Klebsiella pneumoniae</p>", "pct": 8 }, { "a": 3, "text": "<p>Streptococcus pneumoniae</p>", "pct": 76 }, { "a": 4, "text": "<p>Pseudomonas aeruginosa</p>", "pct": 7 }] },
+      { "id": 7, "title": "Warfarin monitoring", "subId": "2", "sysId": "1", "corrAns": "B",
+        "question": "<p>Which test monitors <strong>warfarin</strong> therapy?</p>",
+        "explanation": "<p>Warfarin is monitored with the <strong>INR</strong> (standardised prothrombin time). Heparin uses APTT (or anti-Xa for LMWH); DOACs need no routine monitoring.</p>",
+        "answers": [{ "a": 1, "text": "<p>APTT</p>", "pct": 14 }, { "a": 2, "text": "<p>INR</p>", "pct": 79 }, { "a": 3, "text": "<p>Bleeding time</p>", "pct": 4 }, { "a": 4, "text": "<p>Anti-Xa level</p>", "pct": 3 }] },
+      { "id": 8, "title": "Acute asthma", "subId": "2", "sysId": "2", "corrAns": "D",
+        "question": "<p>First-line treatment of an <strong>acute severe asthma</strong> exacerbation includes oxygen plus which inhaled drug?</p>",
+        "explanation": "<p><strong>Salbutamol (SABA)</strong>, nebulised or via spacer, is first-line, driven by oxygen; add ipratropium in severe cases, plus systemic steroids early. Target SpO₂ 94–98%.</p>",
+        "answers": [{ "a": 1, "text": "<p>Inhaled beclometasone</p>", "pct": 8 }, { "a": 2, "text": "<p>Inhaled salmeterol</p>", "pct": 6 }, { "a": 3, "text": "<p>Nebulised adrenaline</p>", "pct": 9 }, { "a": 4, "text": "<p>Nebulised salbutamol</p>", "pct": 77 }] },
+      { "id": 9, "title": "LV failure", "subId": "1", "sysId": "1", "corrAns": "A",
+        "question": "<p>Left ventricular failure most characteristically produces which finding?</p>",
+        "explanation": "<p>LV failure backs pressure into the pulmonary circulation → <strong>pulmonary oedema</strong>: dyspnoea, orthopnoea, PND, bibasal crackles. Peripheral oedema and raised JVP are right-sided features.</p>",
+        "answers": [{ "a": 1, "text": "<p>Pulmonary oedema with orthopnoea</p>", "pct": 72 }, { "a": 2, "text": "<p>Isolated pedal oedema</p>", "pct": 11 }, { "a": 3, "text": "<p>Ascites</p>", "pct": 8 }, { "a": 4, "text": "<p>Jaundice</p>", "pct": 9 }] },
+      { "id": 10, "title": "Hyperkalaemia ECG", "subId": "3", "sysId": "1", "corrAns": "A,C",
+        "question": "<p>Which ECG features are typical of <strong>hyperkalaemia</strong>? <em>(Select all that apply)</em></p>",
+        "explanation": "<p>Hyperkalaemia causes <strong>tall peaked T waves</strong> and progressive <strong>QRS widening</strong> (also PR prolongation, loss of P waves, sine-wave pattern). Prominent U waves and flattened T waves belong to <em>hypo</em>kalaemia.</p>",
+        "answers": [{ "a": 1, "text": "<p>Tall, peaked T waves</p>", "pct": 68 }, { "a": 2, "text": "<p>Prominent U waves</p>", "pct": 22 }, { "a": 3, "text": "<p>Widened QRS complex</p>", "pct": 61 }, { "a": 4, "text": "<p>Flattened T waves</p>", "pct": 18 }] }
+    ]
+  },
+  "cards": {
+    "folder": "medguru-sample-cards",
+    "name": "Normal Values · Sample Cards",
+    "description": "Twelve essential normal ranges as flip cards.",
+    "decks": [
+      { "id": 1, "name": "Vital signs", "cards": [
+        { "id": 1, "title": "Adult heart rate", "front": "<p>Normal resting <strong>heart rate</strong> in an adult?</p>", "back": "<p><strong>60–100 bpm</strong></p><p>&lt;60 = bradycardia · &gt;100 = tachycardia</p>" },
+        { "id": 2, "title": "Respiratory rate", "front": "<p>Normal adult <strong>respiratory rate</strong>?</p>", "back": "<p><strong>12–20 breaths/min</strong></p><p>RR is the most sensitive early vital sign of deterioration.</p>" },
+        { "id": 3, "title": "SpO₂", "front": "<p>Normal <strong>oxygen saturation</strong> breathing air?</p>", "back": "<p><strong>95–100%</strong></p><p>Target 88–92% in patients at risk of hypercapnic respiratory failure.</p>" },
+        { "id": 4, "title": "Temperature", "front": "<p>Normal core <strong>temperature</strong> range?</p>", "back": "<p><strong>36.5–37.5 °C</strong></p><p>≥38 °C = fever · &lt;35 °C = hypothermia</p>" },
+        { "id": 5, "title": "Blood pressure", "front": "<p>Normal adult <strong>blood pressure</strong>?</p>", "back": "<p><strong>&lt;120/80 mmHg</strong></p><p>Hypertension (clinic): ≥140/90 mmHg.</p>" }
+      ]},
+      { "id": 2, "name": "Lab values", "cards": [
+        { "id": 6, "title": "Sodium", "front": "<p>Normal serum <strong>sodium</strong>?</p>", "back": "<p><strong>135–145 mmol/L</strong></p>" },
+        { "id": 7, "title": "Potassium", "front": "<p>Normal serum <strong>potassium</strong>?</p>", "back": "<p><strong>3.5–5.0 mmol/L</strong></p>" },
+        { "id": 8, "title": "Haemoglobin", "front": "<p>Normal <strong>haemoglobin</strong> (adult)?</p>", "back": "<p>Male <strong>13.5–17.5 g/dL</strong><br>Female <strong>12.0–16.0 g/dL</strong></p>" },
+        { "id": 9, "title": "WBC", "front": "<p>Normal <strong>white cell count</strong>?</p>", "back": "<p><strong>4–11 × 10⁹/L</strong></p>" },
+        { "id": 10, "title": "Platelets", "front": "<p>Normal <strong>platelet count</strong>?</p>", "back": "<p><strong>150–400 × 10⁹/L</strong></p>" },
+        { "id": 11, "title": "Fasting glucose", "front": "<p>Normal <strong>fasting glucose</strong>?</p>", "back": "<p><strong>70–99 mg/dL</strong> (3.9–5.5 mmol/L)</p><p>Diabetes: fasting ≥126 mg/dL (7.0 mmol/L).</p>" },
+        { "id": 12, "title": "Creatinine", "front": "<p>Typical adult serum <strong>creatinine</strong>?</p>", "back": "<p><strong>~0.6–1.2 mg/dL</strong> (53–106 µmol/L)</p><p>Interpret with muscle mass and trend, not a single value.</p>" }
+      ]}
+    ]
+  },
+  "library": {
+    "folder": "medguru-sample-guide",
+    "name": "MedGURU Guide",
+    "description": "How to use every feature, plus the science of studying well.",
+    "toc": [
+      { "id": 1, "name": "Getting started", "docId": 0, "parentId": 0, "leaf": 1 },
+      { "id": 2, "name": "Study tools", "docId": 0, "parentId": 0, "leaf": 1 },
+      { "id": 3, "name": "Evidence", "docId": 0, "parentId": 0, "leaf": 1 },
+      { "id": 4, "name": "Welcome to MedGURU", "docId": 1, "parentId": 1, "leaf": 1 },
+      { "id": 5, "name": "Importing your packs", "docId": 2, "parentId": 1, "leaf": 1 },
+      { "id": 6, "name": "Question bank sessions", "docId": 3, "parentId": 2, "leaf": 1 },
+      { "id": 7, "name": "Flashcards", "docId": 4, "parentId": 2, "leaf": 1 },
+      { "id": 8, "name": "Library & search", "docId": 5, "parentId": 2, "leaf": 1 },
+      { "id": 9, "name": "Study smarter", "docId": 6, "parentId": 3, "leaf": 1 }
+    ],
+    "docs": [
+      { "id": 1, "title": "Welcome to MedGURU", "html": "<p><strong>MedGURU</strong> is an offline study app made by <strong>Dr Sarwar Alam</strong>. It reads the study packs you already own and turns them into question sessions, flashcards and a reference library.</p><h2>The three pack types</h2><ul><li><strong>Qbanks</strong> — timed-style question sessions with explanations and progress.</li><li><strong>Flashcards</strong> — decks you flip through and grade.</li><li><strong>Libraries</strong> — article collections with a table of contents and full-text search.</li></ul><h2>Your data stays yours</h2><p>No account. No cloud. No tracking. The app has <strong>no internet permission</strong> — it works in airplane mode forever. Progress lives in a private database on this device.</p><blockquote>Delete these sample packs anytime from <em>Packs → ⋯ → Delete</em>. Your progress is kept if you ever re-import them.</blockquote>" },
+      { "id": 2, "title": "Importing your packs", "html": "<h2>The ZIP format</h2><p>Each pack is a ZIP containing <strong>one top-level folder</strong>:</p><ul><li>a SQLite database (<code>.db</code>, <code>.sqlite</code>, <code>.sqlite3</code> or <code>.bin</code>)</li><li>optionally <code>manifest.json</code> (name, type, publisher) and <code>icon.png</code></li><li>optionally a <code>media/</code> or <code>Images/</code> folder</li></ul><h2>How to import</h2><ol><li>Open <strong>Packs</strong>.</li><li>Tap <strong>Import ZIP</strong> and pick the file.</li><li>Wait for extraction — the pack appears in the list, ready to study.</li></ol><p>Qbanks, flashcards and article libraries are detected automatically, with or without a manifest. Re-importing an updated pack replaces its files but <strong>keeps your progress</strong>.</p><h2>Not supported yet</h2><p>Lexi-Drugs, VisualDX and Access-Medicine packs use different schemas and are rejected with a clear message.</p>" },
+      { "id": 3, "title": "Question bank sessions", "html": "<h2>Building a session</h2><p>Filter by <strong>subject</strong> and <strong>system</strong>, choose a question count, and pick a status:</p><ul><li><strong>Unseen</strong> — questions you have never answered.</li><li><strong>Missed</strong> — questions you got wrong, for a second pass.</li><li><strong>Flagged</strong> — questions you marked with the flag icon.</li></ul><h2>Answering</h2><p>Tap an option, then <strong>Submit</strong>. Some questions accept <strong>multiple answers</strong> — a chip tells you when. After submitting you get the explanation, the option distribution, and references.</p><h2>Never lose a session</h2><p>Leaving mid-session saves everything. Resume from the pack screen or the <strong>Study</strong> tab. At the end, review every question or tap <strong>Retry missed</strong> to drill only your errors.</p>" },
+      { "id": 4, "title": "Flashcards", "html": "<h2>Flip and grade</h2><p>Tap a card to reveal the back. Then grade yourself:</p><ul><li><strong>Got it</strong> (or swipe right) — marks the card known and moves on.</li><li><strong>Again</strong> (or swipe left) — sends the card to the end of the queue so you see it once more this run.</li></ul><p>Known cards persist between sessions, and each deck shows a progress ring. Use <strong>shuffle</strong> to break order effects — recalling a card in a new sequence is stronger practice.</p><blockquote>Honest grading beats fast grading. If you hesitated, press <em>Again</em>.</blockquote>" },
+      { "id": 5, "title": "Library & search", "html": "<h2>Browsing</h2><p>Libraries open as a <strong>table of contents</strong>: folders expand, articles open in a clean reading view. Use the arrows at the end of an article to move to the next one in the same section.</p><h2>Reading comfort</h2><p>The <strong>Aa</strong> menu adjusts text size, switches to a serif reading font, and changes the page theme (Night, Paper, OLED). Bookmarks are one tap away in the top bar.</p><h2>Search</h2><p>The search box scans the whole library — titles and full text — and highlights your term in the results. Images in articles can be tapped to open a zoomable viewer.</p>" },
+      { "id": 6, "title": "Study smarter", "html": "<h2>What actually works</h2><p>Decades of learning research converge on a few techniques:</p><ul><li><strong>Active recall</strong> — retrieving an answer beats re-reading it. Questions and flashcards are recall machines; use them before you feel ready.</li><li><strong>Spaced repetition</strong> — revisit material across days, not in one block. The <em>Missed</em> filter is your spacing tool: re-drill errors tomorrow, then next week.</li><li><strong>Interleaving</strong> — mix subjects and systems (Random order) rather than blocking one topic. It feels harder and produces better transfer.</li><li><strong>The testing effect</strong> — being tested on material improves later retention more than extra study time, even without feedback.</li></ul><h2>A simple daily loop</h2><ol><li><strong>Quick 10</strong> unseen questions to start the day.</li><li>Read the library article for whatever you missed.</li><li>Flip the matching flashcard deck.</li><li>Finish with <strong>Retry missed</strong> on yesterday's errors.</li></ol><h2>Normal values at a glance</h2><table><thead><tr><th>Test</th><th>Normal range</th></tr></thead><tbody><tr><td>Sodium</td><td>135–145 mmol/L</td></tr><tr><td>Potassium</td><td>3.5–5.0 mmol/L</td></tr><tr><td>WBC</td><td>4–11 × 10⁹/L</td></tr><tr><td>Platelets</td><td>150–400 × 10⁹/L</td></tr><tr><td>Fasting glucose</td><td>70–99 mg/dL</td></tr></tbody></table><p class='muted'>Sample content for demonstration — always confirm against your primary references.</p>" }
+    ]
+  }
+}
