@@ -1,0 +1,7 @@
+node_modules/
+dist/
+assets/icon.png
+src-tauri/target/
+src-tauri/gen/android/
+*.keystore
+keystore.properties
