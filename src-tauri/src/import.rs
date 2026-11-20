@@ -13,12 +13,15 @@ pub fn e<E: std::fmt::Display>(x: E) -> String { x.to_string() }
 pub fn now() -> i64 { SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64 }
 
 pub fn data_root(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(app.path().app_data_dir().map_err(e)?.join("local-databases"))
+    Ok(app.path().app_data_dir().map_err(|err| err.to_string())?.join("local-databases"))
 }
 
-pub fn progress_path(app: &AppHandle) -> Result<String, String> {
-    let p = app.path().app_data_dir().map_err(e)?.join("progress.sqlite");
-    Ok(p.to_string_lossy().to_string())
+// --- THE FOOLPROOF HELPER ---
+fn open_progress_db(app: &AppHandle) -> Result<Connection, String> {
+    let dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
+    let path = dir.join("progress.sqlite");
+    let path_str = path.to_string_lossy().to_string(); // OWNED String
+    Connection::open(&path_str).map_err(|err| err.to_string())
 }
 
 fn pick_db(dir: &Path, man: &serde_json::Value) -> Result<PathBuf, String> {
@@ -27,7 +30,7 @@ fn pick_db(dir: &Path, man: &serde_json::Value) -> Result<PathBuf, String> {
         if f.is_file() { return Ok(f); }
         return Err(format!("manifest primaryDb not found: {p}"));
     }
-    fs::read_dir(dir).map_err(e)?.filter_map(|x| x.ok().map(|x| x.path()))
+    fs::read_dir(dir).map_err(|err| err.to_string())?.filter_map(|x| x.ok().map(|x| x.path()))
         .filter(|p| p.is_file()).filter(|p| {
             let n = p.file_name().unwrap().to_string_lossy().to_lowercase();
             !n.ends_with("-wal") && !n.ends_with("-shm")
@@ -70,24 +73,22 @@ pub fn describe(dir: &Path, app: &AppHandle) -> Result<Resource, String> {
                 n.starts_with("media") || n == "images"
             }));
     let icon = dir.join("icon.png");
-    let c = Connection::open(&db).map_err(e)?;
+    let c = Connection::open(&db).map_err(|err| err.to_string())?;
     
     let total = match rtype.as_str() {
         "library" => c.query_row("SELECT COUNT(*) FROM Docs", [], |r| r.get(0)).unwrap_or(0),
         _ => c.query_row("SELECT COUNT(*) FROM Questions", [], |r| r.get(0)).unwrap_or(0),
     };
     
+    // Safely check progress using the owned helper
     let done = {
-        let p = progress_path(app)?;
-        if std::path::Path::new(&p).exists() {
-            if let Ok(pc) = Connection::open(&p) {
-                let sql = match rtype.as_str() {
-                    "qbank" => "SELECT COUNT(*) FROM answers WHERE folder=?1",
-                    "flashcard" => "SELECT COUNT(*) FROM card_known WHERE folder=?1 AND known=1",
-                    _ => "SELECT COUNT(*) FROM reads WHERE folder=?1",
-                };
-                pc.query_row(sql, rusqlite::params![folder], |r| r.get(0)).unwrap_or(0)
-            } else { 0 }
+        if let Ok(pc) = open_progress_db(app) {
+            let sql = match rtype.as_str() {
+                "qbank" => "SELECT COUNT(*) FROM answers WHERE folder=?1",
+                "flashcard" => "SELECT COUNT(*) FROM card_known WHERE folder=?1 AND known=1",
+                _ => "SELECT COUNT(*) FROM reads WHERE folder=?1",
+            };
+            pc.query_row(sql, rusqlite::params![folder], |r| r.get(0)).unwrap_or(0)
         } else { 0 }
     };
 
@@ -104,13 +105,13 @@ pub fn describe(dir: &Path, app: &AppHandle) -> Result<Resource, String> {
 
 #[tauri::command]
 pub fn app_data_dir(app: AppHandle) -> Result<String, String> {
-    Ok(app.path().app_data_dir().map_err(e)?.to_string_lossy().into())
+    Ok(app.path().app_data_dir().map_err(|err| err.to_string())?.to_string_lossy().into())
 }
 
 #[tauri::command]
 pub async fn import_zip(app: AppHandle, zip_name: String) -> Result<Resource, String> {
-    let zip_path = app.path().app_data_dir().map_err(e)?.join(&zip_name);
-    let mut zip = zip::ZipArchive::new(fs::File::open(&zip_path).map_err(e)?).map_err(e)?;
+    let zip_path = app.path().app_data_dir().map_err(|err| err.to_string())?.join(&zip_name);
+    let mut zip = zip::ZipArchive::new(fs::File::open(&zip_path).map_err(|err| err.to_string())?).map_err(|err| err.to_string())?;
     let mut top: Option<String> = None;
     for name in zip.file_names() {
         if name.starts_with("__MACOSX") { continue; }
@@ -123,18 +124,18 @@ pub async fn import_zip(app: AppHandle, zip_name: String) -> Result<Resource, St
     }
     let folder = top.ok_or("empty ZIP")?;
     let root = data_root(&app)?;
-    fs::create_dir_all(&root).map_err(e)?;
+    fs::create_dir_all(&root).map_err(|err| err.to_string())?;
     let dest = root.join(&folder);
-    if dest.exists() { fs::remove_dir_all(&dest).map_err(e)?; }
+    if dest.exists() { fs::remove_dir_all(&dest).map_err(|err| err.to_string())?; }
     let len = zip.len();
     for i in 0..len {
-        let mut f = zip.by_index(i).map_err(e)?;
+        let mut f = zip.by_index(i).map_err(|err| err.to_string())?;
         let Some(rel) = f.enclosed_name() else { continue };
         if rel.components().any(|c| c.as_os_str() == "__MACOSX") { continue; }
         let out = root.join(&rel);
-        if f.is_dir() { fs::create_dir_all(&out).map_err(e)?; continue; }
-        fs::create_dir_all(out.parent().unwrap()).map_err(e)?;
-        std::io::copy(&mut f, &mut fs::File::create(&out).map_err(e)?).map_err(e)?;
+        if f.is_dir() { fs::create_dir_all(&out).map_err(|err| err.to_string())?; continue; }
+        fs::create_dir_all(out.parent().unwrap()).map_err(|err| err.to_string())?;
+        std::io::copy(&mut f, &mut fs::File::create(&out).map_err(|err| err.to_string())?).map_err(|err| err.to_string())?;
         if i % 48 == 0 { let _ = app.emit("import-progress", serde_json::json!({"stage":"extract","pct": i as f64 / len as f64})); }
     }
     let _ = fs::remove_file(&zip_path);
@@ -162,9 +163,9 @@ pub fn delete_resource(app: AppHandle, folder: String) -> Result<String, String>
     let dir = root.join(&folder);
     if !dir.is_dir() { return Err("pack not found".into()); }
     let trash_dir = root.join(".trash");
-    fs::create_dir_all(&trash_dir).map_err(e)?;
+    fs::create_dir_all(&trash_dir).map_err(|err| err.to_string())?;
     let name = format!("{folder}__{}", now());
-    fs::rename(&dir, trash_dir.join(&name)).map_err(e)?;
+    fs::rename(&dir, trash_dir.join(&name)).map_err(|err| err.to_string())?;
     Ok(name)
 }
 
@@ -176,7 +177,7 @@ pub fn restore_resource(app: AppHandle, trash: String) -> Result<String, String>
     let folder = trash.rsplit_once("__").map(|(f, _)| f).unwrap_or(&trash).to_string();
     let dest = root.join(&folder);
     if dest.exists() { return Err("a pack with this folder already exists".into()); }
-    fs::rename(&src, &dest).map_err(e)?;
+    fs::rename(&src, &dest).map_err(|err| err.to_string())?;
     Ok(folder)
 }
 
@@ -194,6 +195,6 @@ fn dir_size(p: &Path) -> u64 {
 
 #[tauri::command]
 pub fn storage_usage(app: AppHandle) -> Result<u64, String> {
-    let base = app.path().app_data_dir().map_err(e)?;
+    let base = app.path().app_data_dir().map_err(|err| err.to_string())?;
     Ok(dir_size(&base))
 }
