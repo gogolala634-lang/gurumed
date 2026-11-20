@@ -1,0 +1,10 @@
+{
+  "identifier": "default",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "fs:allow-copy-file",
+    "fs:scope-appdata-recursive"
+  ]
+}
