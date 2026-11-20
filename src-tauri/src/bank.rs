@@ -142,12 +142,12 @@ pub fn get_question(app: AppHandle, folder: String, id: i64) -> Result<Value, St
          FROM Questions WHERE id=?", [id],
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))).map_err(e)?;
     let answers = qj(&c, "SELECT answerId, answerText, COALESCE(correctPercentage,0) FROM Answers WHERE qId=? ORDER BY answerId",
-        [&id as &dyn rusqlite::ToSql], |r| {
+        &[&id as &dyn rusqlite::ToSql], |r| {
             let n: i64 = r.get(0)?;
             let letter = if n >= 1 && n <= 26 { char::from(b'A' + (n - 1) as u8).to_string() } else { n.to_string() };
             Ok(json!({"letter": letter, "text": r.get::<_, String>(1)?, "pct": r.get::<_, i64>(2)?})) });
     let refs = qj(&c, "SELECT refTitle, COALESCE(refLink,'') FROM Refs WHERE qId=? ORDER BY id",
-        [&id as &dyn rusqlite::ToSql], |r| Ok(json!({"title": r.get::<_, String>(0)?, "link": r.get::<_, String>(1)?})));
+        &[&id as &dyn rusqlite::ToSql], |r| Ok(json!({"title": r.get::<_, String>(0)?, "link": r.get::<_, String>(1)?})));
     let marked: bool = c.query_row("SELECT EXISTS(SELECT 1 FROM progress.marks WHERE folder=?1 AND qid=?2)",
         rusqlite::params![folder, id], |r| r.get::<_, i64>(0)).unwrap_or(0) == 1;
     let your: Option<Value> = c.query_row("SELECT chosen, correct FROM progress.answers WHERE folder=?1 AND qid=?2",
@@ -182,7 +182,7 @@ pub fn flash_decks(app: AppHandle, folder: String) -> Result<Vec<Value>, String>
     Ok(qj(&c, "SELECT s.id, s.name, COALESCE(s.count,0),
         (SELECT COUNT(*) FROM progress.card_known k WHERE k.folder=?1 AND k.known=1
            AND k.card_id IN (SELECT id FROM Questions WHERE subId=s.id))
-        FROM Subjects s ORDER BY s.name", [&folder as &dyn rusqlite::ToSql],
+        FROM Subjects s ORDER BY s.name", &[&folder as &dyn rusqlite::ToSql],
         |r| Ok(json!({"id": r.get::<_, i64>(0)?, "name": r.get::<_, String>(1)?,
                       "count": r.get::<_, i64>(2)?, "known": r.get::<_, i64>(3)?}))))
 }
@@ -194,7 +194,7 @@ pub fn flash_cards(app: AppHandle, folder: String, deck: i64) -> Result<Vec<Valu
         COALESCE(q.mediaName,''), COALESCE(q.otherMedias,''),
         COALESCE((SELECT k.known FROM progress.card_known k WHERE k.folder=?1 AND k.card_id=q.id),0)
         FROM Questions q WHERE q.subId=?2 ORDER BY q.id",
-        [&folder as &dyn rusqlite::ToSql, &deck], |r| {
+        &[&folder as &dyn rusqlite::ToSql, &deck], |r| {
             let media: Vec<String> = std::iter::once(r.get::<_, String>(4)?)
                 .chain(r.get::<_, String>(5)?.split(',').map(String::from))
                 .map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
@@ -215,7 +215,7 @@ pub fn set_card_known(app: AppHandle, folder: String, card_id: i64, known: bool)
 pub fn lib_toc(app: AppHandle, folder: String, parent: i64, cursor: i64) -> Result<Vec<Value>, String> {
     let c = bank(&app, &folder)?;
     Ok(qj(&c, "SELECT id, name, COALESCE(docId,0) FROM TOC WHERE parentId=?1 AND id>?2 ORDER BY id LIMIT 300",
-        [&parent as &dyn rusqlite::ToSql, &cursor], |r| {
+        &[&parent as &dyn rusqlite::ToSql, &cursor], |r| {
             let doc: i64 = r.get(2)?;
             Ok(json!({"id": r.get::<_, i64>(0)?, "name": r.get::<_, String>(1)?, "doc_id": doc, "is_cat": doc == 0})) }))
 }
@@ -241,17 +241,17 @@ pub fn lib_search(app: AppHandle, folder: String, query: String) -> Result<Vec<V
             let q = format!("\"{}\"", query.replace('"', " "));
             Ok(qj(&c, "SELECT s.contentId, d.title, substr(COALESCE(s.content,''),1,160) FROM Search s
                 JOIN Docs d ON d.id=s.contentId WHERE Search MATCH ?1 GROUP BY s.contentId LIMIT 50",
-                [&q as &dyn rusqlite::ToSql], map))
+                &[&q as &dyn rusqlite::ToSql], map))
         } else {
             let like = format!("%{query}%");
             Ok(qj(&c, "SELECT s.contentId, d.title, substr(COALESCE(s.content,''),1,160) FROM Search s
                 JOIN Docs d ON d.id=s.contentId WHERE s.content LIKE ?1 GROUP BY s.contentId LIMIT 50",
-                [&like as &dyn rusqlite::ToSql], map))
+                &[&like as &dyn rusqlite::ToSql], map))
         }
     } else {
         let like = format!("%{query}%");
         Ok(qj(&c, "SELECT id, title, substr(doc,1,160) FROM Docs WHERE title LIKE ?1 OR doc LIKE ?1 LIMIT 50",
-            [&like as &dyn rusqlite::ToSql], map))
+            &[&like as &dyn rusqlite::ToSql], map))
     }
 }
 
@@ -260,7 +260,7 @@ pub fn lib_siblings(app: AppHandle, folder: String, doc_id: i64) -> Result<Value
     let c = bank(&app, &folder)?;
     let parent: i64 = c.query_row("SELECT parentId FROM TOC WHERE docId=?1 LIMIT 1", [doc_id], |r| r.get(0)).unwrap_or(0);
     let sibs = qj(&c, "SELECT docId, name FROM TOC WHERE parentId=?1 AND COALESCE(docId,0)>0 ORDER BY id",
-        [&parent as &dyn rusqlite::ToSql], |r| Ok(json!({"doc_id": r.get::<_, i64>(0)?, "title": r.get::<_, String>(1)?})));
+        &[&parent as &dyn rusqlite::ToSql], |r| Ok(json!({"doc_id": r.get::<_, i64>(0)?, "title": r.get::<_, String>(1)?})));
     let pos = sibs.iter().position(|s| s["doc_id"].as_i64() == Some(doc_id));
     let at = |i: Option<usize>| i.and_then(|i| sibs.get(i).cloned()).unwrap_or(Value::Null);
     Ok(json!({"prev": at(pos.and_then(|p| p.checked_sub(1))), "next": at(pos.map(|p| p + 1))}))
@@ -280,7 +280,7 @@ pub fn toggle_bookmark(app: AppHandle, folder: String, doc_id: i64, title: Strin
 pub fn list_bookmarks(app: AppHandle, folder: String) -> Result<Vec<Value>, String> {
     let c = Connection::open(progress_path(&app)?).map_err(e)?;
     Ok(qj(&c, "SELECT doc_id, title, ts FROM bookmarks WHERE folder=?1 ORDER BY ts DESC",
-        [&folder as &dyn rusqlite::ToSql],
+        &[&folder as &dyn rusqlite::ToSql],
         |r| Ok(json!({"doc_id": r.get::<_, i64>(0)?, "title": r.get::<_, String>(1)?, "ts": r.get::<_, i64>(2)?}))))
 }
 
