@@ -8,7 +8,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
-            seed::ensure(app.handle());
+            seed::ensure(app);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
