@@ -11,7 +11,9 @@ fn qj(c: &Connection, sql: &str, p: &[&dyn rusqlite::ToSql],
 
 pub fn progress_path(app: &AppHandle) -> Result<String, String> {
     let p = app.path().app_data_dir().map_err(e)?.join("progress.sqlite");
-    let c = Connection::open(&p).map_err(e)?;
+    // Force ownership to prevent temporary drop
+    let path_str = p.to_string_lossy().to_string();
+    let c = Connection::open(&path_str).map_err(e)?;
     c.execute_batch("
         CREATE TABLE IF NOT EXISTS answers(folder TEXT, qid INTEGER, chosen TEXT, correct INTEGER, ts INTEGER, PRIMARY KEY(folder,qid));
         CREATE TABLE IF NOT EXISTS marks(folder TEXT, qid INTEGER, PRIMARY KEY(folder,qid));
@@ -19,7 +21,7 @@ pub fn progress_path(app: &AppHandle) -> Result<String, String> {
         CREATE TABLE IF NOT EXISTS bookmarks(folder TEXT, doc_id INTEGER, title TEXT, ts INTEGER, PRIMARY KEY(folder,doc_id));
         CREATE TABLE IF NOT EXISTS reads(folder TEXT, doc_id INTEGER, ts INTEGER, PRIMARY KEY(folder,doc_id));
     ").map_err(e)?;
-    Ok(p.to_string_lossy().into())
+    Ok(path_str)
 }
 
 fn bank(app: &AppHandle, folder: &str) -> Result<Connection, String> {
@@ -81,7 +83,8 @@ pub fn pool_count(app: AppHandle, folder: String, subject: Option<i64>, system: 
     let c = bank(&app, &folder)?;
     let p = progress_path(&app)?;
     if std::path::Path::new(&p).exists() {
-        let _ = c.execute(&format!("ATTACH DATABASE '{}' AS progress", p.replace('\'', "''")), []);
+        let safe_p = p.replace('\'', "''");
+        let _ = c.execute(&format!("ATTACH DATABASE '{}' AS progress", safe_p), []);
     }
     let (w, uf) = pool_where(subject, system, &status);
     let sql = format!("SELECT COUNT(*) FROM Questions q{w}");
@@ -95,7 +98,8 @@ pub fn build_session(app: AppHandle, folder: String, subject: Option<i64>, syste
     let c = bank(&app, &folder)?;
     let p = progress_path(&app)?;
     if std::path::Path::new(&p).exists() {
-        let _ = c.execute(&format!("ATTACH DATABASE '{}' AS progress", p.replace('\'', "''")), []);
+        let safe_p = p.replace('\'', "''");
+        let _ = c.execute(&format!("ATTACH DATABASE '{}' AS progress", safe_p), []);
     }
     let count = count.clamp(1, 200) as usize;
     let (w, uf) = pool_where(subject, system, &status);
@@ -192,7 +196,8 @@ pub fn flash_decks(app: AppHandle, folder: String) -> Result<Vec<Value>, String>
     let c = bank(&app, &folder)?;
     let p = progress_path(&app)?;
     if std::path::Path::new(&p).exists() {
-        let _ = c.execute(&format!("ATTACH DATABASE '{}' AS progress", p.replace('\'', "''")), []);
+        let safe_p = p.replace('\'', "''");
+        let _ = c.execute(&format!("ATTACH DATABASE '{}' AS progress", safe_p), []);
     }
     Ok(qj(&c, "SELECT s.id, s.name, COALESCE(s.count,0),
         (SELECT COUNT(*) FROM progress.card_known k WHERE k.folder=?1 AND k.known=1
@@ -207,7 +212,8 @@ pub fn flash_cards(app: AppHandle, folder: String, deck: i64) -> Result<Vec<Valu
     let c = bank(&app, &folder)?;
     let p = progress_path(&app)?;
     if std::path::Path::new(&p).exists() {
-        let _ = c.execute(&format!("ATTACH DATABASE '{}' AS progress", p.replace('\'', "''")), []);
+        let safe_p = p.replace('\'', "''");
+        let _ = c.execute(&format!("ATTACH DATABASE '{}' AS progress", safe_p), []);
     }
     Ok(qj(&c, "SELECT q.id, COALESCE(q.title,''), q.question, COALESCE(q.explanation,''),
         COALESCE(q.mediaName,''), COALESCE(q.otherMedias,''),
