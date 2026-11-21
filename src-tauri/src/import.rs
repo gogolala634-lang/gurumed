@@ -16,12 +16,10 @@ pub fn data_root(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app.path().app_data_dir().map_err(|err| err.to_string())?.join("local-databases"))
 }
 
-// --- THE FOOLPROOF HELPER ---
-fn open_progress_db(app: &AppHandle) -> Result<Connection, String> {
+// --- THE BULLETPROOF HELPER ---
+fn progress_db_path(app: &AppHandle) -> Result<String, String> {
     let dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
-    let path = dir.join("progress.sqlite");
-    let path_str = path.to_string_lossy().to_string(); // OWNED String
-    Connection::open(&path_str).map_err(|err| err.to_string())
+    Ok(dir.join("progress.sqlite").to_string_lossy().to_string())
 }
 
 fn pick_db(dir: &Path, man: &serde_json::Value) -> Result<PathBuf, String> {
@@ -80,15 +78,19 @@ pub fn describe(dir: &Path, app: &AppHandle) -> Result<Resource, String> {
         _ => c.query_row("SELECT COUNT(*) FROM Questions", [], |r| r.get(0)).unwrap_or(0),
     };
     
-    // Safely check progress using the owned helper
+    // Safely check progress using the owned string helper
     let done = {
-        if let Ok(pc) = open_progress_db(app) {
-            let sql = match rtype.as_str() {
-                "qbank" => "SELECT COUNT(*) FROM answers WHERE folder=?1",
-                "flashcard" => "SELECT COUNT(*) FROM card_known WHERE folder=?1 AND known=1",
-                _ => "SELECT COUNT(*) FROM reads WHERE folder=?1",
-            };
-            pc.query_row(sql, rusqlite::params![folder], |r| r.get(0)).unwrap_or(0)
+        if let Ok(path_str) = progress_db_path(app) {
+            if std::path::Path::new(&path_str).exists() {
+                if let Ok(pc) = Connection::open(&path_str) {
+                    let sql = match rtype.as_str() {
+                        "qbank" => "SELECT COUNT(*) FROM answers WHERE folder=?1",
+                        "flashcard" => "SELECT COUNT(*) FROM card_known WHERE folder=?1 AND known=1",
+                        _ => "SELECT COUNT(*) FROM reads WHERE folder=?1",
+                    };
+                    pc.query_row(sql, rusqlite::params![folder], |r| r.get(0)).unwrap_or(0)
+                } else { 0 }
+            } else { 0 }
         } else { 0 }
     };
 
