@@ -3,13 +3,15 @@ use rusqlite::Connection;
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
 
-// --- THE FOOLPROOF HELPER ---
-// This creates an OWNED String for the path, completely bypassing the borrow checker.
-fn open_progress_db(app: &AppHandle) -> Result<Connection, String> {
+// --- THE BULLETPROOF HELPER ---
+// Returns an OWNED String, completely eliminating temporary borrow errors.
+fn progress_db_path(app: &AppHandle) -> Result<String, String> {
     let dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
-    let path = dir.join("progress.sqlite");
-    let path_str = path.to_string_lossy().to_string(); // OWNED String
-    
+    Ok(dir.join("progress.sqlite").to_string_lossy().to_string())
+}
+
+fn open_progress_db(app: &AppHandle) -> Result<Connection, String> {
+    let path_str = progress_db_path(app)?;
     let c = Connection::open(&path_str).map_err(|err| err.to_string())?;
     c.execute_batch("
         CREATE TABLE IF NOT EXISTS answers(folder TEXT, qid INTEGER, chosen TEXT, correct INTEGER, ts INTEGER, PRIMARY KEY(folder,qid));
@@ -18,7 +20,6 @@ fn open_progress_db(app: &AppHandle) -> Result<Connection, String> {
         CREATE TABLE IF NOT EXISTS bookmarks(folder TEXT, doc_id INTEGER, title TEXT, ts INTEGER, PRIMARY KEY(folder,doc_id));
         CREATE TABLE IF NOT EXISTS reads(folder TEXT, doc_id INTEGER, ts INTEGER, PRIMARY KEY(folder,doc_id));
     ").map_err(|err| err.to_string())?;
-    
     Ok(c)
 }
 
@@ -35,7 +36,9 @@ fn bank(app: &AppHandle, folder: &str) -> Result<Connection, String> {
 }
 
 pub fn done_count(folder: &str, rtype: &str, app: &AppHandle) -> Result<i64, String> {
-    let c = open_progress_db(app)?;
+    let path_str = progress_db_path(app)?;
+    if !std::path::Path::new(&path_str).exists() { return Ok(0); }
+    let c = Connection::open(&path_str).map_err(|err| err.to_string())?;
     let sql = match rtype {
         "qbank" => "SELECT COUNT(*) FROM answers WHERE folder=?1",
         "flashcard" => "SELECT COUNT(*) FROM card_known WHERE folder=?1 AND known=1",
@@ -94,13 +97,10 @@ pub fn build_session(app: AppHandle, folder: String, subject: Option<i64>, syste
                      count: i64, status: String, order: String) -> Result<Vec<i64>, String> {
     let c = bank(&app, &folder)?;
     
-    // Safely attach progress DB for this query only
-    if let Ok(pc) = open_progress_db(&app) {
-        let _ = pc.execute("DETACH DATABASE progress", []); // Clean slate
-    }
-    if let Ok(p) = app.path().app_data_dir().map(|d| d.join("progress.sqlite").to_string_lossy().to_string()) {
-        if std::path::Path::new(&p).exists() {
-            let safe_p = p.replace('\'', "''");
+    // Safely attach progress DB for this query only using owned string
+    if let Ok(path_str) = progress_db_path(&app) {
+        if std::path::Path::new(&path_str).exists() {
+            let safe_p = path_str.replace('\'', "''");
             let _ = c.execute(&format!("ATTACH DATABASE '{}' AS progress", safe_p), []);
         }
     }
@@ -196,10 +196,9 @@ pub fn toggle_mark(app: AppHandle, folder: String, qid: i64) -> Result<bool, Str
 #[tauri::command]
 pub fn flash_decks(app: AppHandle, folder: String) -> Result<Vec<Value>, String> {
     let c = bank(&app, &folder)?;
-    // Safely attach for this query
-    if let Ok(p) = app.path().app_data_dir().map(|d| d.join("progress.sqlite").to_string_lossy().to_string()) {
-        if std::path::Path::new(&p).exists() {
-            let safe_p = p.replace('\'', "''");
+    if let Ok(path_str) = progress_db_path(&app) {
+        if std::path::Path::new(&path_str).exists() {
+            let safe_p = path_str.replace('\'', "''");
             let _ = c.execute(&format!("ATTACH DATABASE '{}' AS progress", safe_p), []);
         }
     }
@@ -214,9 +213,9 @@ pub fn flash_decks(app: AppHandle, folder: String) -> Result<Vec<Value>, String>
 #[tauri::command]
 pub fn flash_cards(app: AppHandle, folder: String, deck: i64) -> Result<Vec<Value>, String> {
     let c = bank(&app, &folder)?;
-    if let Ok(p) = app.path().app_data_dir().map(|d| d.join("progress.sqlite").to_string_lossy().to_string()) {
-        if std::path::Path::new(&p).exists() {
-            let safe_p = p.replace('\'', "''");
+    if let Ok(path_str) = progress_db_path(&app) {
+        if std::path::Path::new(&path_str).exists() {
+            let safe_p = path_str.replace('\'', "''");
             let _ = c.execute(&format!("ATTACH DATABASE '{}' AS progress", safe_p), []);
         }
     }
@@ -302,4 +301,47 @@ pub fn lib_siblings(app: AppHandle, folder: String, doc_id: i64) -> Result<Value
 pub fn toggle_bookmark(app: AppHandle, folder: String, doc_id: i64, title: String) -> Result<bool, String> {
     let c = open_progress_db(&app)?;
     let exists: bool = c.query_row("SELECT EXISTS(SELECT 1 FROM bookmarks WHERE folder=?1 AND doc_id=?2)",
-        rusqlite::params![folder, doc_id], |r| r.get::<_, i64>(0)).map_err(|err| err
+        rusqlite::params![folder, doc_id], |r| r.get::<_, i64>(0)).map_err(|err| err.to_string())? == 1;
+    if exists { c.execute("DELETE FROM bookmarks WHERE folder=?1 AND doc_id=?2", rusqlite::params![folder, doc_id]).map_err(|err| err.to_string())?; }
+    else { c.execute("INSERT OR REPLACE INTO bookmarks VALUES(?1,?2,?3,?4)", rusqlite::params![folder, doc_id, title, now()]).map_err(|err| err.to_string())?; }
+    Ok(!exists)
+}
+
+#[tauri::command]
+pub fn list_bookmarks(app: AppHandle, folder: String) -> Result<Vec<Value>, String> {
+    let c = open_progress_db(&app)?;
+    Ok(qj(&c, "SELECT doc_id, title, ts FROM bookmarks WHERE folder=?1 ORDER BY ts DESC",
+        rusqlite::params![folder],
+        |r| Ok(json!({"doc_id": r.get::<_, i64>(0)?, "title": r.get::<_, String>(1)?, "ts": r.get::<_, i64>(2)?}))))
+}
+
+#[tauri::command]
+pub fn stats(app: AppHandle, tz_offset: i64) -> Result<Value, String> {
+    let c = open_progress_db(&app)?;
+    let (answered, correct): (i64, i64) = c.query_row("SELECT COUNT(*), COALESCE(SUM(correct),0) FROM answers", [],
+        |r| Ok((r.get(0)?, r.get(1)?))).map_err(|err| err.to_string())?;
+    let off = tz_offset * 60;
+    let day_start = ((now() - off) / 86400) * 86400 + off;
+    let mut week = Vec::new();
+    for i in 0..7i64 {
+        let s = day_start - (6 - i) * 86400;
+        let n: i64 = c.query_row("SELECT COUNT(*) FROM answers WHERE ts>=?1 AND ts<?2", rusqlite::params![s, s + 86400], |r| r.get(0)).unwrap_or(0);
+        week.push(n);
+    }
+    let cards_known: i64 = c.query_row("SELECT COUNT(*) FROM card_known WHERE known=1", [], |r| r.get(0)).unwrap_or(0);
+    let articles_read: i64 = c.query_row("SELECT COUNT(*) FROM reads", [], |r| r.get(0)).unwrap_or(0);
+    Ok(json!({"answered": answered, "correct": correct, "today": week[6], "week": week,
+              "cards_known": cards_known, "articles_read": articles_read}))
+}
+
+#[tauri::command]
+pub fn reset_progress(app: AppHandle, folder: Option<String>) -> Result<(), String> {
+    let c = open_progress_db(&app)?;
+    for t in ["answers", "marks", "card_known", "bookmarks", "reads"] {
+        match &folder {
+            Some(f) => { c.execute(&format!("DELETE FROM {t} WHERE folder=?1"), rusqlite::params![f]).map_err(|err| err.to_string())?; }
+            None => { c.execute(&format!("DELETE FROM {t}"), []).map_err(|err| err.to_string())?; }
+        }
+    }
+    Ok(())
+}
